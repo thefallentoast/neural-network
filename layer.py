@@ -25,7 +25,8 @@ class Layer(object):
                 used in error handling, unique identifier for the 
                 layer object.
         '''
-        self.id = identifier
+        self.id   = identifier
+        self.type = 0
     
     def build(self, inputsize):
         '''
@@ -69,16 +70,16 @@ class Dense(Layer):
                 default:
                     relu
         '''
-        self.ncount = count
-        self.neuronvalues = np.zeros(shape=(self.ncount,))
+        self.ncount             = count
+        self.neuronvalues       = np.zeros(shape=(self.ncount,))
         
-        self.activation = activation
+        self.activation         = activation
         
-        self.inputsize = 0 # defined on first run
-        self.outputsize = (self.ncount,) # the output is always as large as the neuron count
+        self.inputsize          = 0 # defined on first run
+        self.outputsize         = (self.ncount,) # the output is always as large as the neuron count
         
-        self.weights = np.array([], dtype=np.float64)
-        self.biases = np.array([], dtype=np.float64)
+        self.weights            = np.array([], dtype=np.float64)
+        self.biases             = np.array([], dtype=np.float64)
         
     def build(self, inputsize):
         '''
@@ -94,8 +95,8 @@ class Dense(Layer):
                 in the 1d shape format: (self.ncount,)
         '''
         
-        self.weights = np.random.rand(inputsize[0], self.ncount)
-        self.biases = np.random.rand(self.ncount)
+        self.weights            = np.random.rand(inputsize[0], self.ncount)
+        self.biases             = np.random.rand(self.ncount)
         
         return self.outputsize
         
@@ -109,46 +110,78 @@ class Dense(Layer):
         
         self.z = np.dot(self.input, self.weights) + self.biases
         
-        return self.activate(self.z)
+        return np.array([self.activate(i) for i in self.z])
 
-    def activate(self, input, derivative=False):
+    def activate(self, x, derivative=False):
         '''
         Pass input through activation function.
         '''
         if derivative:
             if self.activation == "relu":
-                return 1 if input > 0 else 0
+                return ((abs(x)/x)+1)/2
             
         elif not derivative:
             if self.activation == "relu":
-                return input if input > 0 else 0
+                return (abs(x)+x)/2
 
-    def back(self, gradient):
+    def back(self, gradient, learning_rate):
         '''
         Backpropagates through the layer
         
         Arguments:
             gradient:
-                Rate of change in cost function relative to the activation.
-                Example: 1 output neuron, squared error
-                error = (output - correct) ^ 2
-                gradient (the derivative) = 2 * (output - correct)
+                np.array of the gradients of change in cost function relative to this layer's activations
         Returns:
             np.array of gradients representing the gradient of the cost with respect to each input
         '''
         
-        # the total gradient of change for one weight w connecting the ith neuron of the L layer to the jth neuron of the
-        # L-1 layer is:
-        # deltacost/deltaw = deltacost/deltaactivation * deltaactivation/deltaz * deltaz/deltaw
-        # resolving for:
-        #     deltaz/deltaw:
-        #         w influences z by the previous activation, so the previous activation's influence here is w
-        #         thus, deltaz/deltaw = a
-        #     deltaactivation/deltaz:
-        #         z influences a by the derivative of the activation, thus
-        #         deltaactivation/deltaz = self.activate(z, derivative=True)
-        #     deltacost/deltaactivation:
-        #         a influences C by the derivative of the cost funcion, passed in by argument, thus
-        #         deltacost/deltaactivation = gradient
+        gradient_activation = np.array([self.activate(i, derivative=True) for i in self.z])
+
+        gradient_z = gradient_activation * gradient
+
+        gradient_weights = np.dot(self.input[:, np.newaxis], gradient_z[np.newaxis, :])
+        gradient_biases = gradient_z
+
+        gradient_input = np.dot(self.weights, gradient_z)
+
+        self.weights = self.weights - (learning_rate * gradient_weights)
+        self.biases = self.biases - (learning_rate * gradient_biases)
+
+        return gradient_input, learning_rate
+
+class Dropout(Layer):
+    '''
+    Randomly sets values to 0
+    '''
+
+    def __init__(self, dropout_chance, random_state=1337):
+        '''
+        Constructor for the Dropout layer.
         
-        
+        Arguments:
+            dropout_chance:
+                The chance for a value to be set to 0
+            random_state:
+                The seed used internally
+
+        '''
+
+        self.chance = dropout_chance
+
+    def build(self, inputsize):
+        return inputsize
+
+    def back(self, gradient, learning_rate):
+        return gradient, learning_rate
+    
+    def call(self, layerInput):
+        indices = np.random.choice(
+            layerInput.shape[1] * layerInput.shape[0],
+            replace=False, 
+            size=int(
+                layerInput.shape[1] * layerInput.shape[0]*0.2
+                )
+            )
+        self.output = layerInput
+        self.output[np.unravel_index(indices, my_array.shape)] = 0 
+        return self.output
