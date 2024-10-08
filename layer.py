@@ -28,14 +28,14 @@ class Layer(object):
         self.id   = identifier
         self.type = 0
     
-    def build(self, inputsize):
+    def train(self, inputsize):
         '''
         defined when inheriting from layer, e.g making a Pool2D layer.
         takes in inputsize, subscriptable (e.g tuple or np.ndarray.shape)
         outputs outputsize, subscriptable (e.g tuple or np.ndarray.shape)
         '''
         return inputsize
-        
+
     def call(self, layerInput):
         '''
         defined when inheriting from layer, e.g making a Pool2D layer.
@@ -43,7 +43,7 @@ class Layer(object):
         shapes can be user-defined
         '''
         return layerInput
-    
+
     def __call__(self, layerInput):
         try:
             assert hasattr(layerInput, "__array__")
@@ -80,6 +80,8 @@ class Dense(Layer):
         
         self.weights            = np.array([], dtype=np.float64)
         self.biases             = np.array([], dtype=np.float64)
+        
+        self.id                 = 0
         
     def build(self, inputsize):
         '''
@@ -124,17 +126,20 @@ class Dense(Layer):
             if self.activation == "relu":
                 return (abs(x)+x)/2
 
-    def back(self, gradient, learning_rate):
+    def train(self, gradient, learning_rate):
         '''
         Backpropagates through the layer
         
         Arguments:
-            gradient:
+            (all inside parameters dict)
+            "gradient":
                 np.array of the gradients of change in cost function relative to this layer's activations
+            "learning_rate":
+                float, how fast should the weights/biases be modified
         Returns:
             np.array of gradients representing the gradient of the cost with respect to each input
         '''
-        
+
         gradient_activation = np.array([self.activate(i, derivative=True) for i in self.z])
 
         gradient_z = gradient_activation * gradient
@@ -142,46 +147,10 @@ class Dense(Layer):
         gradient_weights = np.dot(self.input[:, np.newaxis], gradient_z[np.newaxis, :])
         gradient_biases = gradient_z
 
-        gradient_input = np.dot(self.weights, gradient_z)
-
         self.weights = self.weights - (learning_rate * gradient_weights)
         self.biases = self.biases - (learning_rate * gradient_biases)
 
+        gradient_input = np.sum(np.dot(self.weights, gradient_z))
+
         return gradient_input, learning_rate
 
-class Dropout(Layer):
-    '''
-    Randomly sets values to 0
-    '''
-
-    def __init__(self, dropout_chance, random_state=1337):
-        '''
-        Constructor for the Dropout layer.
-        
-        Arguments:
-            dropout_chance:
-                The chance for a value to be set to 0
-            random_state:
-                The seed used internally
-
-        '''
-
-        self.chance = dropout_chance
-
-    def build(self, inputsize):
-        return inputsize
-
-    def back(self, gradient, learning_rate):
-        return gradient, learning_rate
-    
-    def call(self, layerInput):
-        indices = np.random.choice(
-            layerInput.shape[1] * layerInput.shape[0],
-            replace=False, 
-            size=int(
-                layerInput.shape[1] * layerInput.shape[0]*0.2
-                )
-            )
-        self.output = layerInput
-        self.output[np.unravel_index(indices, my_array.shape)] = 0 
-        return self.output
